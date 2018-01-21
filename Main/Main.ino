@@ -1,4 +1,7 @@
 #include <Servo.h>
+#include <SPI.h>
+#include <WiFiST.h>
+#include <PubSubClient.h>
 #include "stdint.h"
 #include "stdbool.h"
 #include "string.h"
@@ -20,6 +23,7 @@
 #define PICC_TYPEB_ACConfigA            0x17
 #define PICC_TYPEF_ACConfigA            0x17
 
+#define ALREADY_READ -15
 #define LineR D0
 #define LineL D1
 
@@ -29,13 +33,50 @@
 
 struct Arene {
   int id_entier;
-  char* id_char;
-  char* composant1;
-  char* composant2;
-  char* composant3;
+  String id_char;
+  String composant1; //NOT NULL
+  String composant2;
+  String composant3;
 };
 
+
+///////////////// PROTOTYPES ////////////////
+void stopMotors();
+void asservir();
+
+bool NFCDetected();
+int readNFCTag();
+void parserTag(sURI_Info url);
+
+void doAction();
+
+void callback(char* topic, byte* payload, unsigned int length);
+void setup_wifi();
+void connectServeur();
+void COMServeur();
+
+void Arene0();
+void Arene1();
+void Arene2();
+void Arene3();
+void Arene4();
+void Arene5();
+void Arene6();
+void Arene7();
+void Arene8();
+void Arene9();
+void Arene10();
+
 ///////////////// DECLARATION DES VARIABLES ////////////////
+/****************DEBUT**WIFI**CONNECTION*********************************/
+SPIClass SPI_3(PC12, PC11, PC10);
+WiFiClass WiFi(&SPI_3, PE0, PE1, PE8, PB13);
+char server[]= "24hducode.spc5studio.com";
+int status = WL_IDLE_STATUS;     // the Wifi radio's status
+WiFiClient espClient;
+PubSubClient client(server,1883,callback,espClient);
+/****************FIN**WIFI**CONNECTION*********************************/
+
 uint8_t TT1Tag[NFCT1_MAX_TAGMEMORY];
 uint8_t TT2Tag[NFCT2_MAX_TAGMEMORY];
 uint8_t TT3Tag[NFCT3_MAX_TAGMEMORY];
@@ -52,35 +93,23 @@ int8_t TagType = TRACK_NOTHING;
 
 struct Arene areneCourante;
 
-int LineRVal;
+int LineRVal; //0 blanc       1 noir
 int LineLVal;
+
+bool actionDone;
 
 Servo motor_LEFT;
 Servo motor_RIGHT;
 
-///////////////// PROTOTYPES ////////////////
-void stopMotors();
-void asservir();
 
-bool NFCDetected();
-void readNFCTag();
-Arene parserTag(sURI_Info url);
+/*char ssid[] = "OnePlus3T";     //  your network SSID (name)
+char pass[] = "JavaBien;24h";  // your network password*/
+char ssid[] = "24HDUCODE";     //  your network SSID (name)
+char pass[] = "2018#24hcode!";  // your network password
+String messageToSend;
 
-void doAction();
-
-void COMServeur();
-
-void Arene0();
-void Arene1();
-void Arene2();
-void Arene3();
-void Arene4();
-void Arene5();
-void Arene6();
-void Arene7();
-void Arene8();
-void Arene9();
-void Arene10();
+int lastIDArene;
+int truc;
 
 ///////////////// INITIALISATION ////////////////
 
@@ -99,24 +128,31 @@ void setup() {
   motor_LEFT.attach(D6, 900, 2100);
   motor_RIGHT.attach(D5, 900, 2100);
 
-
-
-  areneCourante.id_char = (char*) malloc(8);
-  areneCourante.id_entier = 0;
-  areneCourante.composant1 = (char*) malloc(256);
-  areneCourante.composant2 = (char*) malloc(256);
-  areneCourante.composant3 = (char*) malloc(256);
+  areneCourante.id_entier = -1;
+  setup_wifi();
+  lastIDArene = -1;
+  truc = 0;
+  connectServeur();
 }
 
 ///////////////// PROGRAMME PRINCIPAL ////////////////
 void loop() {
   delay(10);
   if(NFCDetected()) {
-    stopMotors();
-    readNFCTag();
-    doAction();
-    COMServeur();
-  } else {
+    truc = readNFCTag();
+    Serial.println("NFC detected");
+    if(truc != 0) { //Si ça s'est pas terminé normalement, on reprend l'asserv
+      asservir();
+      Serial.println("Abandon NFC (deja fait)");
+    } else {
+      Serial.println("NFC go to Action");
+      stopMotors();
+      doAction();
+      lastIDArene = areneCourante.id_entier;
+      COMServeur();
+      //client.loop();
+    }
+  }else {
     asservir();
   }
 }
@@ -135,14 +171,14 @@ void asservir() {
   LineRVal = digitalRead(LineR);
 
   if(LineLVal == 0 && LineRVal == 0) {//Avancer tout droit
-      motor_LEFT.write(1600);
-      motor_RIGHT.write(1400);
+      motor_LEFT.write(1550);
+      motor_RIGHT.write(1410);
   } else if(LineLVal == 0 && LineRVal == 1) { //Tourner à droite
-      motor_LEFT.write(1600);
-      motor_RIGHT.write(1600);
+      motor_LEFT.write(1550);
+      motor_RIGHT.write(1550);
   } else if(LineLVal == 1 && LineRVal == 0) { //Tourner à gauche
-      motor_LEFT.write(1400);
-      motor_RIGHT.write(1400);
+      motor_LEFT.write(1410);
+      motor_RIGHT.write(1410);
   } else if(LineLVal == 1 && LineRVal == 1) { //Attendre
       stopMotors();
       //Peut être rajouter quelque chose pour débloquer la situation
@@ -150,7 +186,7 @@ void asservir() {
 }
 
 bool NFCDetected() { //Renvoie true si le NFC est détecté
-  TagType = ConfigManager_TagHunting(TRACK_ALL);
+  TagType = ConfigManager_TagHunting(TRACK_NFCTYPE2);
   if(TagType == TRACK_NFCTYPE2) {
     digitalWrite(LED_RED , HIGH);
     return true;
@@ -159,60 +195,79 @@ bool NFCDetected() { //Renvoie true si le NFC est détecté
   }
 }
 
-void readNFCTag() { //Lit le tag NFC, l'enregistre dans l'arène courante
+int readNFCTag() { //Lit le tag NFC, l'enregistre dans l'arène courante
   memset(url.Information,'\0',400); /*Clear url buffer before reading*/
   if (TagType == TRACK_NFCTYPE2) {
-    if (PCDNFCT2_ReadNDEF() == RESULTOK ) {
+    if (PCDNFCT2_ReadNDEF() == RESULTOK) {
       digitalWrite(LED_RED , LOW);
       digitalWrite(LED_YELLOW , HIGH);
       memset(NDEF_Buffer,'\0',20); /* Avoid printing useless characters */
       if(NDEF_IdentifyNDEF( &RecordStruct, NDEF_Buffer) == RESULTOK && RecordStruct.TypeLength != 0) {
-        if (NDEF_ReadURI(&RecordStruct, &url)==RESULTOK) {
+        if (NDEF_ReadURI(&RecordStruct, &url)== RESULTOK) {
           digitalWrite(LED_YELLOW , LOW);
           digitalWrite(LED_GREEN , HIGH);
-          areneCourante = parserTag(url);
+          parserTag(url);
           digitalWrite(LED_GREEN, LOW);
+          if(areneCourante.id_entier == lastIDArene)
+            return ALREADY_READ;
+          else
+            return 0;
+        } else {
+          return -1;
         }
+      } else {
+        return -1;
       }
+    } else {
+      return -1;
     }
+  } else {
+    return -1;
   }
 }
 
-Arene parserTag(sURI_Info url) {
-  Arene newArene;
+
+void parserTag(sURI_Info url) {
   String message(url.URI_Message);
-  String id;
   int index[3];
+
+  areneCourante.id_char = "";
+  areneCourante.id_entier = -1;
+  areneCourante.composant1 = "";
+  areneCourante.composant3 = "";
+  areneCourante.composant2 = "";
   
   index[0] = message.indexOf(':');
-  id = message.substring(1, index[0]);
-  id.toCharArray(newArene.id_char, 8);
+  areneCourante.id_char = message.substring(1, index[0]);
   
   //Si id = 5a, 7a, 9a alors retirer extension
-  if(id.indexOf("5") > 0 || id.indexOf("7") > 0 || id.indexOf("9") > 0) { //Retirer les caractères derrière
-    newArene.id_entier = id.substring(1, 2).toInt();
+  if(areneCourante.id_char.indexOf("5") > 0 || areneCourante.id_char.indexOf("7") > 0 || areneCourante.id_char.indexOf("9") > 0) { //Retirer les caractères derrière
+    areneCourante.id_entier = areneCourante.id_char.substring(1, 2).toInt();
+  } else {
+    areneCourante.id_entier = areneCourante.id_char.toInt();
   }
   
-  switch(newArene.id_entier) {
+  switch(areneCourante.id_entier) {
     case 1: case 2: case 3: case 4: case 6: case 8: case 5:
       index[1] = message.lastIndexOf(':');
-      message.substring(index[0]+1, index[1]).toCharArray(newArene.composant1, 255);
-      message.substring(index[1]+1).toCharArray(newArene.composant2, 255);
+      areneCourante.composant1 = message.substring(index[0]+1, index[1]);
+      areneCourante.composant2 = message.substring(index[1]+1);
       break;
     case 10: case 9:
-      message.substring(index[0]+1).toCharArray(newArene.composant1, 255);
+      areneCourante.composant1 = message.substring(index[0]+1);
       break;
     case 7:
-      message.substring(index[0]+1, index[1]).toCharArray(newArene.composant1, 255);
-      message.substring(index[1]+1, index[2]).toCharArray(newArene.composant2, 255);
-      message.substring(index[2]+1).toCharArray(newArene.composant3, 255);
+      areneCourante.composant1 = message.substring(index[0]+1, index[1]);
+      areneCourante.composant2 = message.substring(index[1]+1, index[2]);
+      areneCourante.composant3 = message.substring(index[2]+1);
       break;
     default: break;
   }
-  return newArene;
+  return;
 }
 
 void doAction() {
+  messageToSend = "A" + areneCourante.id_char + ":";
   switch(areneCourante.id_entier) {
     case 0: Arene0(); break;
     case 1: Arene1(); break;
@@ -230,14 +285,60 @@ void doAction() {
   return;
 }
 
+void setup_wifi(){  
+  // Initialize the WiFi device :
+  if (WiFi.status() == WL_NO_SHIELD) {
+    Serial.println("WiFi module not present");
+    // don't continue:
+    while (true);
+  }
+  // Print firmware version
+  String fv = WiFi.firmwareVersion();
+  Serial.print("Firwmare version : ");
+  Serial.println(fv);
+  if (fv != "C3.5.2.3.BETA9")
+  {
+    Serial.println("Please upgrade the firmware");
+  }
+  // attempt to connect to Wifi network:
+  while (status != WL_CONNECTED) {
+    Serial.print("Attempting to connect to WPA SSID: ");
+    Serial.println(ssid);
+    // Connect to WPA/WPA2 network:
+    status = WiFi.begin(ssid, pass);
+    // wait 10 seconds for connection:
+    delay(10000);
+  }
+  // you're connected now, so print out the data:
+  Serial.println("You're connected to the network");
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  /*Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");*/
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+}
+void connectServeur() {
+  if (client.connect("teamA","Bulbizarre", "G3526T49")) {
+    if(client.subscribe("24hcode/teamA/742a3/broker2device")) {
+      Serial.println("subscribe");
+    } else {
+      Serial.println("non subscribe");
+    }
+  } else{
+    Serial.println("client non connecte");
+  }
+  return;
+}
 
 void COMServeur() {
-  Serial.println("");
-  Serial.print(areneCourante.id_entier); Serial.print("//"); Serial.println(areneCourante.id_char);
-  Serial.print(" "); Serial.print(areneCourante.composant1);
-  Serial.print(" "); Serial.print(areneCourante.composant2);
-  Serial.print(" "); Serial.print(areneCourante.composant3);
-  Serial.println("");
+  unsigned long timer = millis();
+  while(!client.publish("24hcode/teamA/742a3/device2broker", messageToSend.c_str()));
+  Serial.println("publish : '" + messageToSend + "'");
   return;
 }
 
@@ -247,24 +348,28 @@ void Arene0() {
   return;
 }
 void Arene1() {
+  messageToSend += "Hello 24h du code!";
   return;
 }
 void Arene2() {
+  messageToSend += areneCourante.composant2;
   return;
 }
 void Arene3() {
+  messageToSend += areneCourante.composant2;
+  //JouerSon(partition = areneCourante.composant2)
   return;
 }
-void Arene4() {
+void Arene4() { //360° -- CCWn
   return;
 }
-void Arene5() {
+void Arene5() { //César PhraseDécodée
   return;
 }
-void Arene6() {
+void Arene6() { //Repos/Caresse - nbCaresses
   return;
 }
-void Arene7() {
+void Arene7() { //SpyDJ -- MusiqueCodée
   return;
 }
 void Arene8() {
