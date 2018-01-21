@@ -3,10 +3,60 @@
 #define SerialPort Serial
 #define BUZZER A5
 
+void jouerSon(char partition[]) {
+  
+  char note[2];
+  int notelue;
+  int i = 0;
+  
+  while(partition[i]!='\0') {
+    note[0] = partition[i];
+    note[1] = partition[i+1];
+
+    switch(note[0]){
+      case 'C' : {
+        notelue = NOTE_C3;
+        break;
+      }
+      case 'D' : {
+        notelue = NOTE_D3;
+        break;
+      }
+      case 'E' : {
+        notelue = NOTE_E3;
+        break;
+      }
+      case 'F' : {
+        notelue = NOTE_F3;
+        break;
+      }
+      case 'G' : {
+        notelue = NOTE_G3;
+        break;
+      }
+      case 'A' : {
+        notelue = NOTE_A3;
+        break;
+      }
+      case 'B' : {
+        notelue = NOTE_B2;
+        break;
+      }
+    }
+    i++;
+    tone(A5,notelue, 200);
+    delay(167);
+    noTone(A5);
+    delay (180);
+  }
+}
+
 void decripter(char code[]){
   char partition[50];
   int j = 0;
-  for(int i = 0; i< sizeof(code); i++){
+  int i = 0;
+  while(code[i]!='\0'){
+    SerialPort.println(code[i]);
     switch(code[i]){
       case 'v' : partition[j++] = 'C';
       case 'd' : partition[j++] = 'C';
@@ -55,55 +105,18 @@ void decripter(char code[]){
       break;
       
     }
+    i++;
   }
+  jouerSon(partition);
 }
 
-void jouerSon(char partition[]) {
-  pinMode(BUZZER, OUTPUT);
-  char note[2];
-  int notelue;
-  SerialPort.begin(9600);
-  for(int i = 0; i < sizeof(partition); i++) {
-    int noteDuration = 1000 / 8;
-    switch(note[0]){
-      case 'C' : {
-        notelue = NOTE_C4;
-        break;
-      }
-      case 'D' : {
-        notelue = NOTE_D4;
-        break;
-      }
-      case 'E' : {
-        notelue = NOTE_E4;
-        break;
-      }
-      case 'F' : {
-        notelue = NOTE_F4;
-        break;
-      }
-      case 'G' : {
-        notelue = NOTE_G4;
-        break;
-      }
-      case 'A' : {
-        notelue = NOTE_A4;
-        break;
-      }
-      case 'B' : {
-        notelue = NOTE_B4;
-        break;
-      }
-    }
-    tone(BUZZER,notelue, 200);
-    SerialPort.println("Note");
-    
-  }
-}
+
 
 void setup(){
+   SerialPort.begin(9600);
+   pinMode(BUZZER, OUTPUT);
   
-  jouerSon("DADADABDBAD");
+  decripter("pkpcaomzzkeilepxfpkpcaomzzkeilep\0");
 }
 
 void loop() {

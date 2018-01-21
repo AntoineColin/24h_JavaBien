@@ -3,14 +3,21 @@
 #define SerialPort Serial
 #define BUZZER A5
 
-void jouerSon(char partition[]) {
-  pinMode(BUZZER, OUTPUT);
+void jouerSon(String partition) {
+  
   char note[2];
   int notelue;
-  SerialPort.begin(9600);
-  for(int i = 0; i < sizeof(partition); i++) {
-    int noteDuration = 1000 / 8;
-    if(note[1]){
+  int i = 0;
+
+  
+  
+  while(partition[i]!='\0') {
+    note[0] = partition[i];
+    note[1] = partition[i+1];
+    
+    int noteDuration = 1000 / 4;
+    
+    if(note[1]=='#'){
       switch(note[0]){
         case 'C' : {
           notelue = NOTE_CS4;
@@ -40,7 +47,11 @@ void jouerSon(char partition[]) {
           notelue = NOTE_C4;
           break;
         }
+        default :
+        notelue = NOTE_C2;
+        break;
       }
+
     }else{
       switch(note[0]){
         case 'C' : {
@@ -71,17 +82,27 @@ void jouerSon(char partition[]) {
           notelue = NOTE_B4;
           break;
         }
+        default : 
+        notelue = NOTE_C4;
+        break;
       }
     }
-    tone(BUZZER,notelue, 200);
-    SerialPort.println("Note");
-    
+    tone(A5,notelue, 250);
+    SerialPort.println(notelue);
+    delay(250);
+    noTone(A5);
+
+    i++;
   }
 }
 
 void setup(){
+  SerialPort.begin(9600);
+  pinMode(BUZZER, OUTPUT);
   
-  jouerSon("DADADABDBAD");
+  char partoche[] = "BA#AG#GFEDC\0";
+  
+  jouerSon(partoche);
 }
 
 void loop() {
