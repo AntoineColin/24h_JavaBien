@@ -10,32 +10,33 @@ void loop() {
 
 Arene4(){
   //CCW5CW3 composant2
-  int n=0,delai; //nb tours
+  int n=0,j=1; //nb tours
   for(int i=0; i<sizeof(areneCourante.composant2);i++){
     if((areneCourante.composant2[i] == "C")&&(areneCourante.composant2[i+1] == "C"))
     {
       n = areneCourante.composant2[i+3];
-      for(int j=0;j<n*2;j++){
-        for(int pos = 1480; pos < 2100; pos -= 1)  // goes from 0 degrees to 180 degrees
-        {                                  // in steps of 1 degree
-            motor_LEFT.write(pos);
-            motor_RIGHT.write(pos);              // tell servo to go to position in variable 'pos'
-            delay(15);                       // waits 15ms for the servo to reach the position
-        } 
+      
+      while(LineLVal != 0 && LineRVal != 0 && j !=n*2)
+      {// in steps of 1 degree
+            motor_LEFT.write(60);
+            motor_RIGHT.write(60); 
+            if(LineLVal == 0 && LineRVal == 0)
+               j++;
       }
       i+=3;
+      j=1;
     }else 
     {
       n = areneCourante.composant2[i+2];
-      for(int j=0;j<n*2;j++){
-        for(int pos = 1480; pos < 2100; pos -= 1)  // goes from 0 degrees to 180 degrees
-        {                                  // in steps of 1 degree
-            motor_LEFT.write(pos);
-            motor_RIGHT.write(pos);              // tell servo to go to position in variable 'pos'
-            delay(15);                       // waits 15ms for the servo to reach the position
-        } 
+      while(LineLVal != 0 && LineRVal != 0 && j !=n*2)
+      {// in steps of 1 degree
+            motor_LEFT.write(120);
+            motor_RIGHT.write(120); 
+            if(LineLVal == 0 && LineRVal == 0)
+               j++;
       }
       i+=2;
+      j=1;
     }
   }
   stopMotors();
