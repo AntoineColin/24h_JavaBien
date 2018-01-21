@@ -2,6 +2,8 @@
 #include <SPI.h>
 #include <WiFiST.h>
 #include <PubSubClient.h>
+
+#include "pitches.h"
 #include "stdint.h"
 #include "stdbool.h"
 #include "string.h"
@@ -31,6 +33,8 @@
 #define LED_RED A3
 #define LED_YELLOW A4
 
+#define BUZZER A5
+
 struct Arene {
   int id_entier;
   String id_char;
@@ -54,6 +58,11 @@ void callback(char* topic, byte* payload, unsigned int length);
 void setup_wifi();
 void connectServeur();
 void COMServeur();
+
+
+String decrypter(const char* code);
+void jouerSon(const char* partition);
+void jouerSon2(const char* partition);
 
 void Arene0();
 void Arene1();
@@ -257,6 +266,8 @@ void parserTag(sURI_Info url) {
       areneCourante.composant1 = message.substring(index[0]+1);
       break;
     case 7:
+      index[1] = message.indexOf(':', index[0]+1);
+      index[2] = message.lastIndexOf(':');
       areneCourante.composant1 = message.substring(index[0]+1, index[1]);
       areneCourante.composant2 = message.substring(index[1]+1, index[2]);
       areneCourante.composant3 = message.substring(index[2]+1);
@@ -357,19 +368,31 @@ void Arene2() {
 }
 void Arene3() {
   messageToSend += areneCourante.composant2;
-  //JouerSon(partition = areneCourante.composant2)
+  jouerSon(areneCourante.composant2.c_str());
   return;
 }
 void Arene4() { //360° -- CCWn
   return;
 }
 void Arene5() { //César PhraseDécodée
+  const char* code = areneCourante.composant2.c_str();
+  char reponse[256];
+  int i = 0;
+  while(code[i]!='\0'){
+    reponse[i] = (char) (((int)code[i]+8-65)%26+65);
+    i++;
+  }
+  messageToSend += reponse;
   return;
 }
 void Arene6() { //Repos/Caresse - nbCaresses
   return;
 }
 void Arene7() { //SpyDJ -- MusiqueCodée
+  String part = "";
+  part += decrypter(areneCourante.composant2.c_str());
+  jouerSon2(part.c_str());
+  messageToSend += part;
   return;
 }
 void Arene8() {
@@ -380,5 +403,200 @@ void Arene9() {
 }
 void Arene10() {
   return;
+}
+
+
+void jouerSon(const char* partition) {
+  char note[2];
+  int notelue;
+  int i = 0;
+  while(partition[i]!='\0') {
+    note[0] = partition[i];
+    note[1] = partition[i+1];
+    
+    int noteDuration = 1000 / 4;
+    
+    if(note[1]=='#'){
+      switch(note[0]){
+        case 'C' : {
+          notelue = NOTE_CS4;
+          break;
+        }
+        case 'D' : {
+          notelue = NOTE_DS4;
+          break;
+        }
+        case 'E' : {
+          notelue = NOTE_F4;
+          break;
+        }
+        case 'F' : {
+          notelue = NOTE_FS4;
+          break;
+        }
+        case 'G' : {
+          notelue = NOTE_GS4;
+          break;
+        }
+        case 'A' : {
+          notelue = NOTE_AS4;
+          break;
+        }
+        case 'B' : {
+          notelue = NOTE_C4;
+          break;
+        }
+        default :
+        notelue = NOTE_C2;
+        break;
+      }
+
+    }else{
+      switch(note[0]){
+        case 'C' : {
+          notelue = NOTE_C4;
+          break;
+        }
+        case 'D' : {
+          notelue = NOTE_D4;
+          break;
+        }
+        case 'E' : {
+          notelue = NOTE_E4;
+          break;
+        }
+        case 'F' : {
+          notelue = NOTE_F4;
+          break;
+        }
+        case 'G' : {
+          notelue = NOTE_G4;
+          break;
+        }
+        case 'A' : {
+          notelue = NOTE_A4;
+          break;
+        }
+        case 'B' : {
+          notelue = NOTE_B4;
+          break;
+        }
+        default : 
+        notelue = NOTE_C4;
+        break;
+      }
+    }
+    tone(BUZZER ,notelue, 167);
+    delay(167);
+    noTone(BUZZER);
+    delay(187);
+    i++;
+  }
+}
+
+/////////////////////////////////////////
+void jouerSon2(const char* partition) {
+  
+  char note[2];
+  int notelue;
+  int i = 0;
+  
+  while(partition[i]!='\0') {
+    note[0] = partition[i];
+    note[1] = partition[i+1];
+
+    switch(note[0]){
+      case 'C' : {
+        notelue = NOTE_C3;
+        break;
+      }
+      case 'D' : {
+        notelue = NOTE_D3;
+        break;
+      }
+      case 'E' : {
+        notelue = NOTE_E3;
+        break;
+      }
+      case 'F' : {
+        notelue = NOTE_F3;
+        break;
+      }
+      case 'G' : {
+        notelue = NOTE_G3;
+        break;
+      }
+      case 'A' : {
+        notelue = NOTE_A3;
+        break;
+      }
+      case 'B' : {
+        notelue = NOTE_B2;
+        break;
+      }
+    }
+    i++;
+    tone(A5,notelue, 200);
+    delay(167);
+    noTone(A5);
+    delay (180);
+  }
+}
+
+String decrypter(const char* code){
+  String partition = "";
+  int i = 0;
+  while(code[i]!='\0'){
+    switch(code[i]){
+      case 'v' :case 'V' :case 'w' :case 'W' : partition += 'C';
+      case 'd' :case 'D' : partition += 'C';
+      case 'c' :case 'C' : partition += 'C';
+      case 'p' :case 'P' : partition += 'C';
+        
+      break;
+      
+      case 'j' :case 'J' : partition += 'D';
+      case 's' :case 'S' : partition += 'D';
+      case 'm' :case 'M' : partition += 'D';
+        
+      break;
+      
+      case 'x' :case 'X' : partition += 'E';
+      case 'f' :case 'F' : partition += 'E';
+      case 'r' :case 'R' : partition += 'E';
+      case 'o' :case 'O' : partition += 'E';
+        
+      break;
+
+      case 'q' :case 'Q' : partition += 'F';
+      case 'a' :case 'A' : partition += 'F';
+      case 'n' :case 'N' : partition += 'F';
+        
+      break;
+      
+      case 'y' :case 'Y' : partition += 'G';
+      case 'g' :case 'G' : partition += 'G';
+      case 'l' :case 'L' : partition += 'G';
+      case 'k' :case 'K' : partition += 'G';
+        
+      break;
+      
+      case 'u' :case 'U' : partition += 'A';
+      case 'b' :case 'B' : partition += 'A';
+      case 'i' :case 'I' : partition += 'A';
+        
+      break;
+      
+      case 'z' :case 'Z' : partition += 'B';
+      case 'h' :case 'H' : partition += 'B';
+      case 't' :case 'T' : partition += 'B';
+      case 'e' :case 'E' : partition += 'B';
+        
+      break;
+      
+    }
+    i++;
+  }
+  return partition;
 }
 
