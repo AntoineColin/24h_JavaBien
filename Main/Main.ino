@@ -29,10 +29,10 @@
 
 struct Arene {
   int id_entier;
-  char* id_char;
-  char* composant1;
-  char* composant2;
-  char* composant3;
+  String id_char;
+  String composant1; //NOT NULL
+  String composant2;
+  String composant3;
 };
 
 ///////////////// DECLARATION DES VARIABLES ////////////////
@@ -52,11 +52,15 @@ int8_t TagType = TRACK_NOTHING;
 
 struct Arene areneCourante;
 
-int LineRVal;
+int LineRVal; //0 blanc       1 noir
 int LineLVal;
+
+bool actionDone;
 
 Servo motor_LEFT;
 Servo motor_RIGHT;
+
+unsigned long i;
 
 ///////////////// PROTOTYPES ////////////////
 void stopMotors();
@@ -64,7 +68,7 @@ void asservir();
 
 bool NFCDetected();
 void readNFCTag();
-Arene parserTag(sURI_Info url);
+void parserTag(sURI_Info url);
 
 void doAction();
 
@@ -85,7 +89,7 @@ void Arene10();
 ///////////////// INITIALISATION ////////////////
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   ConfigManager_HWInit();
   
@@ -99,26 +103,21 @@ void setup() {
   motor_LEFT.attach(D6, 900, 2100);
   motor_RIGHT.attach(D5, 900, 2100);
 
-
-
-  areneCourante.id_char = (char*) malloc(8);
-  areneCourante.id_entier = 0;
-  areneCourante.composant1 = (char*) malloc(256);
-  areneCourante.composant2 = (char*) malloc(256);
-  areneCourante.composant3 = (char*) malloc(256);
+  i = 1;
+  areneCourante.id_entier = -1;
 }
 
 ///////////////// PROGRAMME PRINCIPAL ////////////////
 void loop() {
   delay(10);
   if(NFCDetected()) {
-    stopMotors();
     readNFCTag();
     doAction();
-    COMServeur();
-  } else {
+    COMServeur(&areneCourante);
+  }else {
     asservir();
   }
+  i++;
 }
 
 
@@ -135,14 +134,14 @@ void asservir() {
   LineRVal = digitalRead(LineR);
 
   if(LineLVal == 0 && LineRVal == 0) {//Avancer tout droit
-      motor_LEFT.write(1600);
-      motor_RIGHT.write(1400);
+      motor_LEFT.write(1550);
+      motor_RIGHT.write(1410);
   } else if(LineLVal == 0 && LineRVal == 1) { //Tourner à droite
-      motor_LEFT.write(1600);
-      motor_RIGHT.write(1600);
+      motor_LEFT.write(1550);
+      motor_RIGHT.write(1550);
   } else if(LineLVal == 1 && LineRVal == 0) { //Tourner à gauche
-      motor_LEFT.write(1400);
-      motor_RIGHT.write(1400);
+      motor_LEFT.write(1410);
+      motor_RIGHT.write(1410);
   } else if(LineLVal == 1 && LineRVal == 1) { //Attendre
       stopMotors();
       //Peut être rajouter quelque chose pour débloquer la situation
@@ -150,7 +149,7 @@ void asservir() {
 }
 
 bool NFCDetected() { //Renvoie true si le NFC est détecté
-  TagType = ConfigManager_TagHunting(TRACK_ALL);
+  TagType = ConfigManager_TagHunting(TRACK_NFCTYPE2);
   if(TagType == TRACK_NFCTYPE2) {
     digitalWrite(LED_RED , HIGH);
     return true;
@@ -162,15 +161,15 @@ bool NFCDetected() { //Renvoie true si le NFC est détecté
 void readNFCTag() { //Lit le tag NFC, l'enregistre dans l'arène courante
   memset(url.Information,'\0',400); /*Clear url buffer before reading*/
   if (TagType == TRACK_NFCTYPE2) {
-    if (PCDNFCT2_ReadNDEF() == RESULTOK ) {
+    if (PCDNFCT2_ReadNDEF() == RESULTOK) {
       digitalWrite(LED_RED , LOW);
       digitalWrite(LED_YELLOW , HIGH);
       memset(NDEF_Buffer,'\0',20); /* Avoid printing useless characters */
       if(NDEF_IdentifyNDEF( &RecordStruct, NDEF_Buffer) == RESULTOK && RecordStruct.TypeLength != 0) {
-        if (NDEF_ReadURI(&RecordStruct, &url)==RESULTOK) {
+        if (NDEF_ReadURI(&RecordStruct, &url)== RESULTOK) {
           digitalWrite(LED_YELLOW , LOW);
           digitalWrite(LED_GREEN , HIGH);
-          areneCourante = parserTag(url);
+          parserTag(url);
           digitalWrite(LED_GREEN, LOW);
         }
       }
@@ -178,38 +177,45 @@ void readNFCTag() { //Lit le tag NFC, l'enregistre dans l'arène courante
   }
 }
 
-Arene parserTag(sURI_Info url) {
-  Arene newArene;
+
+void parserTag(sURI_Info url) {
   String message(url.URI_Message);
-  String id;
   int index[3];
+
+  areneCourante.id_char = "";
+  areneCourante.id_entier = -1;
+  areneCourante.composant1 = "";
+  areneCourante.composant3 = "";
+  areneCourante.composant2 = "";
   
   index[0] = message.indexOf(':');
-  id = message.substring(1, index[0]);
-  id.toCharArray(newArene.id_char, 8);
+  areneCourante.id_char = message.substring(1, index[0]);
   
   //Si id = 5a, 7a, 9a alors retirer extension
-  if(id.indexOf("5") > 0 || id.indexOf("7") > 0 || id.indexOf("9") > 0) { //Retirer les caractères derrière
-    newArene.id_entier = id.substring(1, 2).toInt();
+  if(areneCourante.id_char.indexOf("5") > 0 || areneCourante.id_char.indexOf("7") > 0 || areneCourante.id_char.indexOf("9") > 0) { //Retirer les caractères derrière
+    areneCourante.id_entier = areneCourante.id_char.substring(1, 2).toInt();
+  } else {
+    areneCourante.id_entier = areneCourante.id_char.toInt();
   }
   
-  switch(newArene.id_entier) {
+  switch(areneCourante.id_entier) {
     case 1: case 2: case 3: case 4: case 6: case 8: case 5:
       index[1] = message.lastIndexOf(':');
-      message.substring(index[0]+1, index[1]).toCharArray(newArene.composant1, 255);
-      message.substring(index[1]+1).toCharArray(newArene.composant2, 255);
+      areneCourante.composant1 = message.substring(index[0]+1, index[1]);
+      areneCourante.composant2 = message.substring(index[1]+1);
       break;
     case 10: case 9:
-      message.substring(index[0]+1).toCharArray(newArene.composant1, 255);
+      areneCourante.composant1 = message.substring(index[0]+1);
       break;
     case 7:
-      message.substring(index[0]+1, index[1]).toCharArray(newArene.composant1, 255);
-      message.substring(index[1]+1, index[2]).toCharArray(newArene.composant2, 255);
-      message.substring(index[2]+1).toCharArray(newArene.composant3, 255);
+      areneCourante.composant1 = message.substring(index[0]+1, index[1]);
+      areneCourante.composant2 = message.substring(index[1]+1, index[2]);
+      areneCourante.composant3 = message.substring(index[2]+1);
       break;
     default: break;
   }
-  return newArene;
+  //COMServeur(&newArene);
+  return;
 }
 
 void doAction() {
@@ -231,12 +237,24 @@ void doAction() {
 }
 
 
-void COMServeur() {
+void COMServeur(Arene *a) {
   Serial.println("");
-  Serial.print(areneCourante.id_entier); Serial.print("//"); Serial.println(areneCourante.id_char);
-  Serial.print(" "); Serial.print(areneCourante.composant1);
-  Serial.print(" "); Serial.print(areneCourante.composant2);
-  Serial.print(" "); Serial.print(areneCourante.composant3);
+  Serial.print(a->id_entier); Serial.print("//"); Serial.println(a->id_char);
+  switch(a->id_entier) {
+    case 1: case 2: case 3: case 4: case 6: case 8: case 5:
+      Serial.print(a->composant1);
+      Serial.print(" "); Serial.print(a->composant2);
+      break;
+    case 10: case 9:
+      Serial.print(a->composant1);
+      break;
+    case 7:
+      Serial.print(a->composant1);
+      Serial.print(" "); Serial.print(a->composant2);
+      Serial.print(" "); Serial.print(a->composant3);
+      break;
+    default: break;
+  }
   Serial.println("");
   return;
 }
